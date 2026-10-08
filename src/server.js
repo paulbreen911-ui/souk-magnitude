@@ -1,6 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
-import { createEngine } from "./engine.js";
+import { createEngine, HISTORY_FILE } from "./engine.js";
 
 const config = JSON.parse(fs.readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const engine = createEngine(config);
@@ -13,11 +13,15 @@ http.createServer(async (req, res) => {
   const pw = process.env.DASH_PASSWORD, tok = process.env.CLAUDE_TOKEN;
   const isAdmin = !pw || req.headers.authorization === "Basic " + Buffer.from("admin:" + pw).toString("base64");
   // CLAUDE_TOKEN: read-only access to /api/state via "Authorization: Bearer <token>"
-  const isClaude = tok && req.url === "/api/state" && req.method === "GET" && req.headers.authorization === "Bearer " + tok;
+  const isClaude = tok && (req.url === "/api/state" || req.url === "/api/history") && req.method === "GET" && req.headers.authorization === "Bearer " + tok;
   if (!isAdmin && !isClaude) {
     res.writeHead(401, { "www-authenticate": 'Basic realm="souk"' }); return res.end("Auth required");
   }
   try {
+    if (req.url === "/api/history") {
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      return res.end(fs.existsSync(HISTORY_FILE) ? fs.readFileSync(HISTORY_FILE) : "");
+    }
     if (req.url === "/api/state") return json(engine.state());
     if (req.url === "/api/targets" && req.method === "POST") { engine.setTargets(await body(req)); return json({ ok: true }); }
     if (req.url === "/api/pause" && req.method === "POST") { engine.setPaused((await body(req)).paused); return json({ ok: true }); }

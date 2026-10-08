@@ -2,5 +2,7 @@
   "tickSeconds": 5,
   "epsilon": 0.2,
   "targets": {},
-  "connectors": []
+  "connectors": [
+    { "type": "alphavantage", "name": "alphavantage", "tickers": ["AAPL", "MSFT", "NVDA"], "everySeconds": 3600 }
+  ]
 }

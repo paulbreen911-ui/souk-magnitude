@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import { httpConnector } from "./connectors/http.js";
+import { alphaVantageConnector } from "./connectors/alphavantage.js";
 
-const makers = { http: httpConnector };
+const makers = { http: httpConnector, alphavantage: alphaVantageConnector };
+const DIR = process.env.DATA_DIR ? `${process.env.DATA_DIR}/` : new URL("../data/", import.meta.url).pathname;
+export const HISTORY_FILE = DIR + "history.jsonl"; // full time series, append-only
 const STATE_FILE = process.env.DATA_DIR ? `${process.env.DATA_DIR}/state.json` : new URL("../data/state.json", import.meta.url);
 
 // How far metrics are outside their targets (0 = all within target).
@@ -25,7 +28,8 @@ export function createEngine(config) {
   for (const k of Object.keys(state.latest)) if (!names.has(k)) delete state.latest[k];
   for (const k of Object.keys(state.stats)) if (!names.has(k.split(":")[0])) delete state.stats[k];
   state.history = state.history.filter((h) => names.has(h.connector));
-  const last = {}; // connector -> { action, before }
+  const last = {};
+  const lastRun = {}; // connector -> { action, before }
 
   const save = () => { try { fs.writeFileSync(STATE_FILE, JSON.stringify(state)); } catch {} };
 
@@ -51,12 +55,15 @@ export function createEngine(config) {
     last[c.name] = { action, before: now };
     state.latest[c.name] = { metrics, score: now, action, at: Date.now() };
     state.history.push({ at: Date.now(), connector: c.name, metrics, score: now, action });
+    try { fs.appendFileSync(HISTORY_FILE, JSON.stringify({ at: Date.now(), connector: c.name, metrics }) + "\n"); } catch {}
     state.history = state.history.slice(-300);
   }
 
   async function tick() {
     if (state.paused) return;
     for (const c of connectors) {
+      if (c.everySeconds && Date.now() - (lastRun[c.name] || 0) < c.everySeconds * 1000) continue;
+      lastRun[c.name] = Date.now();
       try { await tickOne(c); }
       catch (e) { state.log.push({ at: Date.now(), error: `${c.name}: ${e.message}` }); state.log = state.log.slice(-50); }
     }
