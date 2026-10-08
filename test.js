@@ -53,3 +53,22 @@ test("free mode: ETFs first, respects daily limit and news reserve", async () =>
   const q2 = await av.quotes({ etfs, stocks }, "2026-10-10", 5);  // next day resumes at cursor
   assert.equal(calls[10], "S5");
 });
+
+test("forecast: needs history, cone widens, drift is shrunk", async () => {
+  const { forecast, backtest } = await import("./src/market/forecast.js");
+  assert.equal(forecast([1, 2, 3]).ready, false);
+  let p = 100; const closes = Array.from({ length: 120 }, (_, i) => (p *= 1 + 0.002 + Math.sin(i) * 0.01));
+  const f = forecast(closes, 20);
+  assert.ok(f.ready && f.points.length === 20);
+  assert.ok(f.points[19].hi80 - f.points[19].lo80 > f.points[0].hi80 - f.points[0].lo80);
+  assert.ok(f.points[4].pUp > 0.5 && f.points[4].pUp < 0.8);
+  const b = backtest(closes, 5);
+  assert.ok(b.n > 50 && b.cover80 > 0.5);
+});
+
+test("backfill parser", async () => {
+  const { parseDaily } = await import("./src/market/av.js");
+  const r = parseDaily({ "Time Series (Daily)": { "2026-10-08": { "1. open": "1", "2. high": "3", "3. low": "0.5", "4. close": "2", "5. volume": "9" }, "2026-10-07": { "1. open": "1", "2. high": "1", "3. low": "1", "4. close": "1", "5. volume": "1" } } });
+  assert.deepEqual(r.map((x) => x.day), ["2026-10-07", "2026-10-08"]);
+  assert.equal(r[1].close, 2);
+});

@@ -28,7 +28,9 @@ export function buildDaily(day) {
   const rows = db.prepare("SELECT ticker, price, change_pct, volume FROM snapshots WHERE day=? ORDER BY ts").all(day);
   const by = {};
   for (const r of rows) (by[r.ticker] ??= []).push(r);
-  const up = db.prepare("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,?)");
+  // Keep a real OHLC row (e.g. from backfill) if present: widen high/low, update close.
+  const up = db.prepare(`INSERT INTO daily VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(day, ticker) DO UPDATE SET
+    high=max(high, excluded.high), low=min(low, excluded.low), close=excluded.close, volume=excluded.volume, change_pct=excluded.change_pct`);
   for (const [t, a] of Object.entries(by)) {
     const p = a.map((x) => x.price), last = a.at(-1);
     up.run(day, t, p[0], Math.max(...p), Math.min(...p), last.price, last.volume, last.change_pct);
@@ -56,6 +58,21 @@ export function buildCategories(day) {
   }
 }
 
+// One-time: ~100 days of daily history per category ETF, so trends/forecasts work from day one.
+export async function backfill(n = nyNow()) {
+  const reserve = process.env.AV_PREMIUM === "1" ? 0 : Object.keys(UNIVERSE).length * 2; // quotes + news
+  const ins = db.prepare("INSERT OR IGNORE INTO daily VALUES (?,?,?,?,?,?,?,?)");
+  let got = 0;
+  for (const u of Object.values(UNIVERSE)) {
+    if (av.budgetLeft(n.day) <= reserve) break;
+    if (done(`backfill ${u.etf}`)) continue;
+    const h = await av.history(u.etf, n.day);
+    h.forEach((r, i) => ins.run(r.day, u.etf, r.open, r.high, r.low, r.close, r.volume, i ? (r.close / h[i - 1].close - 1) * 100 : null));
+    mark(`backfill ${u.etf}`); got++;
+  }
+  return got;
+}
+
 export async function daily(n = nyNow()) {
   buildDaily(n.day);
   for (const [cat, u] of Object.entries(UNIVERSE)) {
@@ -71,6 +88,9 @@ export async function daily(n = nyNow()) {
 export function startScheduler() {
   const tick = async () => {
     const n = nyNow();
+    try {
+      if (n.hour >= 8 && !done(`backfillrun ${n.day}`)) { mark(`backfillrun ${n.day}`); console.log("backfill", await backfill(n)); }
+    } catch (e) { console.error("backfill", e.message); }
     if (!isWeekday(n)) return;
     try {
       // Premium: hourly 10–16 ET. Free: one snapshot at 16:00 ET (call budget).

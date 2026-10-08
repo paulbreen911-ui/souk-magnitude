@@ -5,7 +5,7 @@ import { db } from "./db.js";
 const BASE = "https://www.alphavantage.co/query";
 const key = () => process.env.ALPHAVANTAGE_KEY;
 const premium = () => process.env.AV_PREMIUM === "1";
-const limit = () => +(process.env.AV_DAILY_LIMIT || (premium() ? 100000 : 25));
+export const limit = () => +(process.env.AV_DAILY_LIMIT || (premium() ? 100000 : 25));
 
 export function callsToday(day) { return db.prepare("SELECT n FROM api_calls WHERE day=?").get(day)?.n || 0; }
 export const budgetLeft = (day) => limit() - callsToday(day);
@@ -59,4 +59,14 @@ export async function news(tickers, day) {
   const j = await get({ function: "NEWS_SENTIMENT", tickers: tickers.slice(0, 20).join(), limit: 200 }, day);
   const s = (j.feed || []).flatMap((a) => (a.ticker_sentiment || []).filter((x) => tickers.includes(x.ticker)).map((x) => +x.ticker_sentiment_score));
   return { sentiment: s.length ? s.reduce((a, b) => a + b, 0) / s.length : null, articles: (j.feed || []).length };
+}
+
+export function parseDaily(j) {
+  const ts = j["Time Series (Daily)"] || {};
+  return Object.keys(ts).sort().map((day) => ({ day, open: +ts[day]["1. open"], high: +ts[day]["2. high"],
+    low: +ts[day]["3. low"], close: +ts[day]["4. close"], volume: +ts[day]["5. volume"] }));
+}
+// ~100 trading days of history for one ticker (free endpoint, 1 call).
+export async function history(ticker, day) {
+  return parseDaily(await get({ function: "TIME_SERIES_DAILY", symbol: ticker, outputsize: "compact" }, day));
 }
