@@ -87,6 +87,9 @@ input[type=number]{width:80px;background:var(--bg);color:var(--text);border:1px 
 <details class=card id=engineCard>
   <summary style="margin:0;font-weight:600;color:var(--text)">Decision engine <span class=muted style="font-weight:400">· targets, platforms, learning</span></summary>
   <div id=engine style="margin-top:12px"></div>
+  <h2 style="margin-top:16px">Market jobs</h2>
+  <div class=sub>Run a job now (uses Alpha Vantage calls). Normally these run on schedule.</div>
+  <p><button class=btn data-job=backfill>Backfill history</button> <button class=btn data-job=snapshot>Snapshot now</button> <button class=btn data-job=daily>Roll up latest day</button> <span class=sub id=jobMsg></span></p>
 </details>
 </main>
 
@@ -348,6 +351,11 @@ async function loadEngine(){
   $("pauseB").onclick=async()=>{await fetch("/api/pause",{method:"POST",body:JSON.stringify({paused:!E.paused})});loadEngine()};
 }
 
+document.querySelectorAll("[data-job]").forEach(b=>b.onclick=async()=>{
+  $("jobMsg").textContent="Running…";
+  try{const r=await fetch("/api/market/run?job="+b.dataset.job,{method:"POST"});const j=await r.json();
+    $("jobMsg").textContent=j.error?("Error: "+j.error):("Done"+(j.r!=null?" ("+j.r+" fetched)":"")+".");load()}catch(e){$("jobMsg").textContent="Failed: "+e.message}
+});
 /* ---------- load + render ---------- */
 async function load(){
   if(busy)return;busy=true;$("root").classList.add("loading");

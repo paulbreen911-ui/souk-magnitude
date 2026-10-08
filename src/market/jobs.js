@@ -13,14 +13,15 @@ const isWeekday = (n) => !["Sat", "Sun"].includes(n.dow);
 const done = (key) => db.prepare("SELECT 1 FROM runs WHERE key=?").get(key);
 const mark = (key) => db.prepare("INSERT OR IGNORE INTO runs VALUES (?,?)").run(key, new Date().toISOString());
 
-export async function snapshot(n = nyNow()) {
+export async function snapshot(n = nyNow(), force = false) {
   const all = allTickers();
   const qs = await av.quotes({ etfs: all.filter((t) => t[2]).map((t) => t[0]), stocks: all.filter((t) => !t[2]).map((t) => t[0]) },
     n.day, process.env.AV_PREMIUM === "1" ? 0 : Object.keys(UNIVERSE).length);
   const ins = db.prepare("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?,?,?)");
   const ts = new Date().toISOString();
   // Keep only quotes from today's session (skips holidays / stale data).
-  for (const q of qs) if (q.day === n.day) ins.run(ts, n.day, q.ticker, q.price, q.change_pct, q.volume);
+  // force (manual run): keep the quote's own trading day, e.g. the last close when markets are shut.
+  for (const q of qs) if (force ? q.day : q.day === n.day) ins.run(ts, q.day, q.ticker, q.price, q.change_pct, q.volume);
   return qs.length;
 }
 

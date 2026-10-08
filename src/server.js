@@ -31,7 +31,8 @@ http.createServer(async (req, res) => {
       if (what === "daily") return json(q("SELECT d.*, c.category FROM daily d JOIN companies c USING(ticker) WHERE day >= date('now', ?) AND (? IS NULL OR c.category=?) ORDER BY day DESC, category, ticker", `-${days} days`, u.searchParams.get("category"), u.searchParams.get("category")));
       if (what === "snapshots") return json(q("SELECT * FROM snapshots WHERE day >= date('now', ?) AND (? IS NULL OR ticker=?) ORDER BY ts DESC LIMIT 5000", `-${days} days`, u.searchParams.get("ticker"), u.searchParams.get("ticker")));
       if (what === "status") return json({ today: nyNow(), calls: q("SELECT * FROM api_calls ORDER BY day DESC LIMIT 7"), snapshots: q("SELECT day, COUNT(*) n FROM snapshots GROUP BY day ORDER BY day DESC LIMIT 7") });
-      if (req.method === "POST" && what === "run") { const n = nyNow(); const j = u.searchParams.get("job"); const r = j === "daily" ? await daily(n) : j === "backfill" ? await backfill(n) : await snapshot(n); return json({ ok: true, r }); }
+      if (req.method === "POST" && what === "run") { const n = nyNow(); const j = u.searchParams.get("job"); const last = db.prepare("SELECT MAX(day) d FROM snapshots").get().d;
+        const r = j === "daily" ? await daily({ day: u.searchParams.get("day") || last || n.day }) : j === "backfill" ? await backfill(n) : await snapshot(n, true); return json({ ok: true, r }); }
       return json({ error: "unknown" }, 404);
     }
     if (req.url === "/api/history") {
