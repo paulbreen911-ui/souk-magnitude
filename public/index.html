@@ -89,7 +89,7 @@ input[type=number]{width:80px;background:var(--bg);color:var(--text);border:1px 
   <div id=engine style="margin-top:12px"></div>
   <h2 style="margin-top:16px">Market jobs</h2>
   <div class=sub>Run a job now (uses Alpha Vantage calls). Normally these run on schedule.</div>
-  <p><button class=btn data-job=backfill>Backfill history</button> <button class=btn data-job=snapshot>Snapshot now</button> <button class=btn data-job=daily>Roll up latest day</button> <span class=sub id=jobMsg></span></p>
+  <p><button class=btn data-job=backfill>Backfill history</button> <button class=btn data-job=snapshot>Snapshot now</button> <button class=btn data-job=daily>Roll up latest day</button> <button class=btn data-job=resetcalls style="background:var(--muted)">Reset call counter</button> <span class=sub id=jobMsg></span></p>
 </details>
 </main>
 
@@ -354,7 +354,7 @@ async function loadEngine(){
 document.querySelectorAll("[data-job]").forEach(b=>b.onclick=async()=>{
   $("jobMsg").textContent="Running…";
   try{const r=await fetch("/api/market/run?job="+b.dataset.job,{method:"POST"});const j=await r.json();
-    $("jobMsg").textContent=j.error?("Error: "+j.error):("Done"+(j.r!=null?" ("+j.r+" fetched)":"")+".");load()}catch(e){$("jobMsg").textContent="Failed: "+e.message}
+    $("jobMsg").textContent=j.error?("Done, but: "+j.error):("Done"+(j.r!=null?" ("+j.r+" fetched)":"")+".");load()}catch(e){$("jobMsg").textContent="Failed: "+e.message}
 });
 /* ---------- load + render ---------- */
 async function load(){

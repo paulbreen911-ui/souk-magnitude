@@ -10,6 +10,8 @@ test("score is 0 within targets, >0 outside", () => {
   assert.ok(score({ cpa: 12, roas: 3.5 }, t) > 0);
 });
 
+process.env.AV_MIN_GAP_MS = "0"; process.env.AV_RETRY_MS = "1";
+
 test("market pipeline: snapshots -> daily -> category summary", async () => {
   process.env.DATA_DIR = fs.mkdtempSync(os.tmpdir() + "/mk-");
   process.env.ALPHAVANTAGE_KEY = "k"; process.env.AV_PREMIUM = "1";
@@ -71,4 +73,19 @@ test("backfill parser", async () => {
   const r = parseDaily({ "Time Series (Daily)": { "2026-10-08": { "1. open": "1", "2. high": "3", "3. low": "0.5", "4. close": "2", "5. volume": "9" }, "2026-10-07": { "1. open": "1", "2. high": "1", "3. low": "1", "4. close": "1", "5. volume": "1" } } });
   assert.deepEqual(r.map((x) => x.day), ["2026-10-07", "2026-10-08"]);
   assert.equal(r[1].close, 2);
+});
+
+test("retries the 1-request-per-second reply instead of giving up", async () => {
+  process.env.AV_PREMIUM = "0"; process.env.AV_DAILY_LIMIT = "50";
+  const av = await import("./src/market/av.js");
+  let n = 0;
+  globalThis.fetch = async (url) => {
+    const sym = new URL(url).searchParams.get("symbol");
+    const body = ++n % 2 ? { Information: "Please consider spreading out your free API requests more sparingly (1 request per second)." }
+      : { "Global Quote": { "01. symbol": sym, "05. price": "5", "07. latest trading day": "2026-10-09", "10. change percent": "1%", "06. volume": "1" } };
+    return { ok: true, json: async () => body };
+  };
+  const q = await av.quotes({ etfs: ["A", "B", "C"], stocks: [] }, "2026-10-11", 0);
+  assert.equal(q.length, 3);
+  assert.equal(av.callsToday("2026-10-11"), 3); // rejected attempts are not counted
 });

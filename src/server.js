@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import { createEngine, HISTORY_FILE } from "./engine.js";
 import { db } from "./market/db.js";
+import { lastError } from "./market/av.js";
 import { buildDashboard } from "./market/dashboard.js";
 import { startScheduler, snapshot, daily, backfill, nyNow } from "./market/jobs.js";
 
@@ -30,9 +31,11 @@ http.createServer(async (req, res) => {
       if (what === "summary") return json(q("SELECT * FROM category_daily WHERE day >= date('now', ?) ORDER BY day DESC, category", `-${days} days`));
       if (what === "daily") return json(q("SELECT d.*, c.category FROM daily d JOIN companies c USING(ticker) WHERE day >= date('now', ?) AND (? IS NULL OR c.category=?) ORDER BY day DESC, category, ticker", `-${days} days`, u.searchParams.get("category"), u.searchParams.get("category")));
       if (what === "snapshots") return json(q("SELECT * FROM snapshots WHERE day >= date('now', ?) AND (? IS NULL OR ticker=?) ORDER BY ts DESC LIMIT 5000", `-${days} days`, u.searchParams.get("ticker"), u.searchParams.get("ticker")));
-      if (what === "status") return json({ today: nyNow(), calls: q("SELECT * FROM api_calls ORDER BY day DESC LIMIT 7"), snapshots: q("SELECT day, COUNT(*) n FROM snapshots GROUP BY day ORDER BY day DESC LIMIT 7") });
-      if (req.method === "POST" && what === "run") { const n = nyNow(); const j = u.searchParams.get("job"); const last = db.prepare("SELECT MAX(day) d FROM snapshots").get().d;
-        const r = j === "daily" ? await daily({ day: u.searchParams.get("day") || last || n.day }) : j === "backfill" ? await backfill(n) : await snapshot(n, true); return json({ ok: true, r }); }
+      if (what === "status") return json({ today: nyNow(), lastError, calls: q("SELECT * FROM api_calls ORDER BY day DESC LIMIT 7"), snapshots: q("SELECT day, COUNT(*) n FROM snapshots GROUP BY day ORDER BY day DESC LIMIT 7") });
+      if (req.method === "POST" && what === "run") { const n = nyNow(); const j = u.searchParams.get("job");
+        if (j === "resetcalls") { db.prepare("DELETE FROM api_calls WHERE day=?").run(n.day); return json({ ok: true }); }
+        const last = db.prepare("SELECT MAX(day) d FROM snapshots").get().d;
+        const r = j === "daily" ? await daily({ day: u.searchParams.get("day") || last || n.day }) : j === "backfill" ? await backfill(n) : await snapshot(n, true); return json({ ok: true, r, error: lastError }); }
       return json({ error: "unknown" }, 404);
     }
     if (req.url === "/api/history") {

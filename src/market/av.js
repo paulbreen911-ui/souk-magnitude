@@ -10,15 +10,29 @@ export const limit = () => +(process.env.AV_DAILY_LIMIT || (premium() ? 100000 :
 export function callsToday(day) { return db.prepare("SELECT n FROM api_calls WHERE day=?").get(day)?.n || 0; }
 export const budgetLeft = (day) => limit() - callsToday(day);
 
+// Free keys also allow only ~1 request/second: space calls out, and retry the "too fast" reply.
+// Only successful responses count against the daily budget.
+let lastCall = 0;
+export let lastError = null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const gap = () => +(process.env.AV_MIN_GAP_MS ?? 1300);
+
 async function get(params, day) {
   if (!key()) throw new Error("ALPHAVANTAGE_KEY not set");
-  db.prepare("INSERT INTO api_calls VALUES (?,1) ON CONFLICT(day) DO UPDATE SET n=n+1").run(day);
-  const r = await fetch(`${BASE}?${new URLSearchParams({ ...params, apikey: key() })}`);
-  if (!r.ok) throw new Error(`alphavantage ${r.status}`);
-  const j = await r.json();
-  const msg = j.Note || j.Information || j["Error Message"];
-  if (msg) throw new Error(`alphavantage: ${msg}`.slice(0, 200));
-  return j;
+  for (let attempt = 0; ; attempt++) {
+    const wait = lastCall + gap() - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastCall = Date.now();
+    const r = await fetch(`${BASE}?${new URLSearchParams({ ...params, apikey: key() })}`);
+    if (!r.ok) throw new Error(`alphavantage ${r.status}`);
+    const j = await r.json();
+    const msg = j.Note || j.Information || j["Error Message"];
+    if (msg && /per second|spreading out|sparingly/i.test(msg) && attempt < 3) { await sleep(+(process.env.AV_RETRY_MS ?? 2000)); continue; }
+    if (msg) { lastError = `alphavantage: ${msg}`.slice(0, 200); throw new Error(lastError); }
+    lastError = null;
+    db.prepare("INSERT INTO api_calls VALUES (?,1) ON CONFLICT(day) DO UPDATE SET n=n+1").run(day);
+    return j;
+  }
 }
 
 export function parseQuote(j) {
@@ -44,7 +58,7 @@ export async function quotes({ etfs, stocks }, day, reserve = 0) {
   const out = [];
   const one = async (t) => {
     try { const q = parseQuote(await get({ function: "GLOBAL_QUOTE", symbol: t }, day)); if (q) out.push(q); return true; }
-    catch (e) { console.error(e.message); return !/rate|limit|premium|call frequency/i.test(e.message); }
+    catch (e) { console.error(e.message); lastError = e.message; return !/rate|limit|premium|call frequency/i.test(e.message); }
   };
   for (const t of etfs) { if (budgetLeft(day) <= reserve || !(await one(t))) return out; }
   let pos = db.prepare("SELECT pos FROM cursor WHERE id=1").get()?.pos || 0;
