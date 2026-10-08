@@ -3,7 +3,7 @@ import { simConnector } from "./connectors/sim.js";
 import { httpConnector } from "./connectors/http.js";
 
 const makers = { sim: simConnector, http: httpConnector };
-const STATE_FILE = new URL("../data/state.json", import.meta.url);
+const STATE_FILE = process.env.DATA_DIR ? `${process.env.DATA_DIR}/state.json` : new URL("../data/state.json", import.meta.url);
 
 // How far metrics are outside their targets (0 = all within target).
 export function score(metrics, targets) {

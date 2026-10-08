@@ -13,3 +13,7 @@ npm test
 - Dashboard edits targets live and pauses the loop.
 
 Add a platform: copy `http.js`, adapt auth/endpoints, register in `engine.js`.
+
+## Deploy (Railway)
+Start command `npm start`. Env vars: `DASH_PASSWORD` (login `admin` / this; set it, the dashboard can change targets),
+`DATA_DIR` (point at a mounted volume so learning survives redeploys), plus any connector tokens referenced as `env:NAME` in `config.json`.
