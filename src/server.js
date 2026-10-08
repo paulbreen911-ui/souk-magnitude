@@ -10,8 +10,11 @@ const body = (req) => new Promise((res) => { let d = ""; req.on("data", (c) => (
 
 http.createServer(async (req, res) => {
   const json = (o, code = 200) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
-  const pw = process.env.DASH_PASSWORD;
-  if (pw && req.headers.authorization !== "Basic " + Buffer.from("admin:" + pw).toString("base64")) {
+  const pw = process.env.DASH_PASSWORD, tok = process.env.CLAUDE_TOKEN;
+  const isAdmin = !pw || req.headers.authorization === "Basic " + Buffer.from("admin:" + pw).toString("base64");
+  // CLAUDE_TOKEN: read-only access to /api/state via "Authorization: Bearer <token>"
+  const isClaude = tok && req.url === "/api/state" && req.method === "GET" && req.headers.authorization === "Bearer " + tok;
+  if (!isAdmin && !isClaude) {
     res.writeHead(401, { "www-authenticate": 'Basic realm="souk"' }); return res.end("Auth required");
   }
   try {

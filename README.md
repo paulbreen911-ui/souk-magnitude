@@ -16,4 +16,5 @@ Add a platform: copy `http.js`, adapt auth/endpoints, register in `engine.js`.
 
 ## Deploy (Railway)
 Start command `npm start`. Env vars: `DASH_PASSWORD` (login `admin` / this; set it, the dashboard can change targets),
+`CLAUDE_TOKEN` (optional; read-only Bearer access to `/api/state` for Claude),
 `DATA_DIR` (point at a mounted volume so learning survives redeploys), plus any connector tokens referenced as `env:NAME` in `config.json`.
