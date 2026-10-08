@@ -28,6 +28,7 @@ async function load(){
       return `<tr><td>${m}</td><td class="${ok?"ok":"bad"}">${f(v)}</td><td>${spark(n,m)}</td></tr>`}).join("")+
     `</table>Last action: <b>${l.action}</b></div>`;
   }
+  if(!Object.keys(S.latest).length)h+=`<div class=card>No platforms connected yet. Add one in config.json.</div>`;
   h+=`<div class=card><h2>What we've learned</h2><table><tr><th>Action<th>Tries<th>Avg improvement</tr>`+
     Object.entries(S.stats).sort((a,b)=>b[1].avg-a[1].avg).map(([k,v])=>`<tr><td>${k}<td>${v.n}<td class="${v.avg>0?"ok":"bad"}">${f(v.avg)}</tr>`).join("")+`</table></div>`;
   if(S.log.length)h+=`<div class="card bad">${S.log.slice(-5).map(e=>e.error).join("<br>")}</div>`;

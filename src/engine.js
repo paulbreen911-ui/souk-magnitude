@@ -1,8 +1,7 @@
 import fs from "node:fs";
-import { simConnector } from "./connectors/sim.js";
 import { httpConnector } from "./connectors/http.js";
 
-const makers = { sim: simConnector, http: httpConnector };
+const makers = { http: httpConnector };
 const STATE_FILE = process.env.DATA_DIR ? `${process.env.DATA_DIR}/state.json` : new URL("../data/state.json", import.meta.url);
 
 // How far metrics are outside their targets (0 = all within target).
@@ -21,6 +20,11 @@ export function createEngine(config) {
   const connectors = config.connectors.map((c) => makers[c.type](c));
   let state = { targets: config.targets, paused: false, stats: {}, log: [], latest: {}, history: [] };
   try { state = { ...state, ...JSON.parse(fs.readFileSync(STATE_FILE, "utf8")) }; } catch {}
+  // Drop leftovers from connectors that are no longer configured.
+  const names = new Set(connectors.map((c) => c.name));
+  for (const k of Object.keys(state.latest)) if (!names.has(k)) delete state.latest[k];
+  for (const k of Object.keys(state.stats)) if (!names.has(k.split(":")[0])) delete state.stats[k];
+  state.history = state.history.filter((h) => names.has(h.connector));
   const last = {}; // connector -> { action, before }
 
   const save = () => { try { fs.writeFileSync(STATE_FILE, JSON.stringify(state)); } catch {} };

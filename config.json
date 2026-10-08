@@ -1,11 +1,6 @@
 {
   "tickSeconds": 5,
   "epsilon": 0.2,
-  "targets": {
-    "cpa":  { "max": 12 },
-    "roas": { "min": 3 }
-  },
-  "connectors": [
-    { "type": "sim", "name": "demo-ads" }
-  ]
+  "targets": {},
+  "connectors": []
 }

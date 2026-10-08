@@ -8,7 +8,7 @@ npm test
 ```
 
 - `config.json` – targets, tick speed, exploration rate, connectors
-- `src/connectors/` – one file per platform (`sim` demo, generic `http`). Each exposes `metrics()`, `apply(action)`, `actions`.
+- `src/connectors/` – one file per platform (generic `http` to start). Each exposes `metrics()`, `apply(action)`, `actions`.
 - `src/engine.js` – the loop. Learning = per-action average improvement toward targets (epsilon-greedy), saved to `data/state.json`.
 - Dashboard edits targets live and pauses the loop.
 
