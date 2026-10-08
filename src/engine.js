@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { httpConnector } from "./connectors/http.js";
-import { alphaVantageConnector } from "./connectors/alphavantage.js";
 
-const makers = { http: httpConnector, alphavantage: alphaVantageConnector };
+const makers = { http: httpConnector };
+
 const DIR = process.env.DATA_DIR ? `${process.env.DATA_DIR}/` : new URL("../data/", import.meta.url).pathname;
 export const HISTORY_FILE = DIR + "history.jsonl"; // full time series, append-only
 const STATE_FILE = process.env.DATA_DIR ? `${process.env.DATA_DIR}/state.json` : new URL("../data/state.json", import.meta.url);

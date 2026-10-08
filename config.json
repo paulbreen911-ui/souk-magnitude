@@ -2,7 +2,5 @@
   "tickSeconds": 5,
   "epsilon": 0.2,
   "targets": {},
-  "connectors": [
-    { "type": "alphavantage", "name": "alphavantage", "tickers": ["AWK", "XYL", "WTRG", "PHO"], "everySeconds": 3600 }
-  ]
+  "connectors": []
 }

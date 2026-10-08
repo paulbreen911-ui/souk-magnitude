@@ -1,17 +1,39 @@
 import test from "node:test";
 import assert from "node:assert";
+import fs from "node:fs";
+import os from "node:os";
 import { score } from "./src/engine.js";
+
 test("score is 0 within targets, >0 outside", () => {
   const t = { cpa: { max: 10 }, roas: { min: 3 } };
   assert.equal(score({ cpa: 9, roas: 3.5 }, t), 0);
   assert.ok(score({ cpa: 12, roas: 3.5 }, t) > 0);
 });
-import { parseQuote, parseNews } from "./src/connectors/alphavantage.js";
-test("alphavantage parsers", () => {
-  const q = parseQuote({ "Global Quote": { "05. price": "150.5", "10. change percent": "0.67%", "06. volume": "100" } }, "IBM");
-  assert.deepEqual(q, { IBM_price: 150.5, IBM_change_pct: 0.67, IBM_volume: 100 });
-  const n = parseNews({ feed: [{ ticker_sentiment: [{ ticker: "AAPL", ticker_sentiment_score: "0.2" }] }, { ticker_sentiment: [{ ticker: "AAPL", ticker_sentiment_score: "0.4" }] }] }, ["AAPL", "MSFT"]);
-  assert.equal(n.AAPL_news_count, 2);
-  assert.ok(Math.abs(n.AAPL_sentiment - 0.3) < 1e-9);
-  assert.equal(n.MSFT_sentiment, undefined);
+
+test("market pipeline: snapshots -> daily -> category summary", async () => {
+  process.env.DATA_DIR = fs.mkdtempSync(os.tmpdir() + "/mk-");
+  process.env.ALPHAVANTAGE_KEY = "k"; process.env.AV_PREMIUM = "1";
+  const { db } = await import("./src/market/db.js");
+  const jobs = await import("./src/market/jobs.js");
+  const av = await import("./src/market/av.js");
+
+  assert.deepEqual(av.parseQuote({ "Global Quote": { "01. symbol": "AWK", "05. price": "100", "07. latest trading day": "2026-10-08", "10. change percent": "1.5%", "06. volume": "9" } }),
+    { ticker: "AWK", day: "2026-10-08", price: 100, change_pct: 1.5, volume: 9 });
+  assert.equal(jobs.nyNow(new Date("2026-10-08T14:30:00Z")).hour, 10);
+
+  const day = "2026-10-08";
+  let price = 100;
+  globalThis.fetch = async (url) => {
+    const f = new URL(url).searchParams.get("function");
+    const body = f === "NEWS_SENTIMENT"
+      ? { feed: [{ ticker_sentiment: [{ ticker: "AWK", ticker_sentiment_score: "0.4" }] }] }
+      : { data: ["AWK", "PHO"].map((symbol) => ({ symbol, timestamp: day + " 15:00:00", close: String(price), change_percent: "2.0", volume: "5" })) };
+    return { ok: true, json: async () => body };
+  };
+  await jobs.snapshot({ day }); price = 102; await jobs.snapshot({ day });
+  await jobs.daily({ day });
+  const d = db.prepare("SELECT * FROM daily WHERE ticker='AWK'").get();
+  assert.equal(d.open, 100); assert.equal(d.close, 102); assert.equal(d.high, 102);
+  const c = db.prepare("SELECT * FROM category_daily WHERE category='water'").get();
+  assert.equal(c.etf_change_pct, 2); assert.equal(c.best, "AWK"); assert.equal(c.sentiment, 0.4);
 });

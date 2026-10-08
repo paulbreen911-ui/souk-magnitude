@@ -10,6 +10,7 @@ input{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:6p
 </style>
 <h1>Souk Magnitude</h1>
 <button id=pause></button>
+<div id=market></div>
 <div id=app></div>
 <script>
 let S;
@@ -44,5 +45,13 @@ async function saveT(){
   await fetch("/api/targets",{method:"POST",body:JSON.stringify(T)});load();
 }
 pause.onclick=async()=>{await fetch("/api/pause",{method:"POST",body:JSON.stringify({paused:!S.paused})});load()};
-load();setInterval(load,2000);
+async function loadMarket(){
+  const r=await (await fetch("/api/market/summary?days=60")).json();
+  if(!r.length){market.innerHTML=`<div class=card><h2>Markets</h2>No daily data yet. First rollup runs after 4:30pm ET on a trading day.</div>`;return}
+  const day=r[0].day,rows=r.filter(x=>x.day==day),p=v=>v==null?"–":`<span class="${v>=0?"ok":"bad"}">${v>=0?"+":""}${v.toFixed(2)}%</span>`;
+  market.innerHTML=`<div class=card><h2>Markets <small>${day} · ${new Set(r.map(x=>x.day)).size} days stored</small></h2><table>
+  <tr><th>Category<th>Day<th>ETF<th>5d<th>20d<th>News<th>Up/Down<th>Best<th>Worst</tr>`+rows.map(x=>
+  `<tr><td>${x.category}<td>${p(x.avg_change_pct)}<td>${p(x.etf_change_pct)}<td>${p(x.ret_5d)}<td>${p(x.ret_20d)}<td>${x.sentiment==null?"–":x.sentiment.toFixed(2)}<td>${x.up}/${x.down}<td>${x.best}<td>${x.worst}</tr>`).join("")+`</table></div>`;
+}
+load();setInterval(load,2000);loadMarket();setInterval(loadMarket,60000);
 </script>
