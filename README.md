@@ -21,7 +21,7 @@ Start command `npm start`. Env vars: `DASH_PASSWORD` (login `admin` / this; set 
 
 ## Market database (SQLite, `$DATA_DIR/market.db`)
 - `src/market/universe.js` – categories → companies (+ ETF benchmark). Edit to change what's tracked.
-- Hourly snapshots 10:00–16:00 ET (weekdays) → `snapshots`; daily rollup after 16:30 ET → `daily`, `news`, `category_daily` (day change, vs ETF, 5d/20d trend, sentiment). Each day appends.
+- Premium: hourly snapshots 10:00–16:00 ET (weekdays) → `snapshots`; daily rollup after 16:30 ET → `daily`, `news`, `category_daily` (day change, vs ETF, 5d/20d trend, sentiment). Each day appends.
 - Read APIs (admin login or `CLAUDE_TOKEN`): `/api/market/summary?days=60`, `/daily?category=water`, `/snapshots?ticker=AWK`, `/status`.
-- Alpha Vantage: free key ≈ 25 calls/day, so coverage is slow (resumes round-robin). Set `AV_PREMIUM=1` for bulk quotes (100 symbols/call) = full hourly coverage. `AV_DAILY_LIMIT` overrides the cap.
+- Alpha Vantage free key ≈ 25 calls/day: one snapshot at 16:00 ET = 9 ETF benchmarks + a few stocks (round-robin, rest reserved for 9 news pulls). Category trends (5d/20d) use the ETF. Set `AV_PREMIUM=1` for bulk quotes (100 symbols/call) = full hourly coverage. `AV_DAILY_LIMIT` overrides the cap.
 - Requires Node ≥ 22.13 (built-in `node:sqlite`).

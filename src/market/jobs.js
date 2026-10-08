@@ -14,7 +14,9 @@ const done = (key) => db.prepare("SELECT 1 FROM runs WHERE key=?").get(key);
 const mark = (key) => db.prepare("INSERT OR IGNORE INTO runs VALUES (?,?)").run(key, new Date().toISOString());
 
 export async function snapshot(n = nyNow()) {
-  const qs = await av.quotes(allTickers().map((t) => t[0]), n.day);
+  const all = allTickers();
+  const qs = await av.quotes({ etfs: all.filter((t) => t[2]).map((t) => t[0]), stocks: all.filter((t) => !t[2]).map((t) => t[0]) },
+    n.day, process.env.AV_PREMIUM === "1" ? 0 : Object.keys(UNIVERSE).length);
   const ins = db.prepare("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?,?,?)");
   const ts = new Date().toISOString();
   // Keep only quotes from today's session (skips holidays / stale data).
@@ -48,7 +50,7 @@ export function buildCategories(day) {
     const sent = db.prepare("SELECT sentiment FROM news WHERE day=? AND category=?").get(day, cat);
     db.prepare("INSERT OR REPLACE INTO category_daily VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(
       day, cat, avg(d.map((x) => x.change_pct)), etf?.change_pct ?? null,
-      avg(u.tickers.map((t) => ret(t, day, 5))), avg(u.tickers.map((t) => ret(t, day, 20))),
+      ret(u.etf, day, 5), ret(u.etf, day, 20),
       sent?.sentiment ?? null, d.filter((x) => x.change_pct > 0).length, d.filter((x) => x.change_pct < 0).length,
       sorted[0].ticker, sorted.at(-1).ticker);
   }
@@ -65,13 +67,15 @@ export async function daily(n = nyNow()) {
   buildCategories(n.day);
 }
 
-// Check once a minute. Hourly snapshots at 10:00–16:00 ET on weekdays; daily rollup after 16:30 ET.
+// Check once a minute. Snapshots (hourly if premium, else once at 16:00 ET) on weekdays; daily rollup after 16:30 ET.
 export function startScheduler() {
   const tick = async () => {
     const n = nyNow();
     if (!isWeekday(n)) return;
     try {
-      if (n.hour >= 10 && n.hour <= 16 && !done(`snap ${n.day} ${n.hour}`)) {
+      // Premium: hourly 10–16 ET. Free: one snapshot at 16:00 ET (call budget).
+      const first = process.env.AV_PREMIUM === "1" ? 10 : 16;
+      if (n.hour >= first && n.hour <= 16 && !done(`snap ${n.day} ${n.hour}`)) {
         mark(`snap ${n.day} ${n.hour}`); console.log("snapshot", n.day, n.hour, await snapshot(n));
       }
       if ((n.hour > 16 || (n.hour === 16 && n.minute >= 30)) && !done(`daily ${n.day}`)) {

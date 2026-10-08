@@ -32,20 +32,24 @@ export function parseBulk(j) {
     change_pct: parseFloat(q.change_percent), volume: +q.volume })).filter((q) => q.ticker && q.price);
 }
 
-// Returns quotes for as many of `tickers` as the budget allows.
-export async function quotes(tickers, day) {
+// Returns quotes within budget. Free mode: ETFs first (category benchmarks), then stocks round-robin,
+// keeping `reserve` calls for the daily news pulls.
+export async function quotes({ etfs, stocks }, day, reserve = 0) {
   if (premium()) {
-    const out = [];
-    for (let i = 0; i < tickers.length && budgetLeft(day) > 0; i += 100)
-      out.push(...parseBulk(await get({ function: "REALTIME_BULK_QUOTES", symbol: tickers.slice(i, i + 100).join() }, day)));
+    const all = [...etfs, ...stocks], out = [];
+    for (let i = 0; i < all.length && budgetLeft(day) > 0; i += 100)
+      out.push(...parseBulk(await get({ function: "REALTIME_BULK_QUOTES", symbol: all.slice(i, i + 100).join() }, day)));
     return out;
   }
   const out = [];
+  const one = async (t) => {
+    try { const q = parseQuote(await get({ function: "GLOBAL_QUOTE", symbol: t }, day)); if (q) out.push(q); return true; }
+    catch (e) { console.error(e.message); return !/rate|limit|premium|call frequency/i.test(e.message); }
+  };
+  for (const t of etfs) { if (budgetLeft(day) <= reserve || !(await one(t))) return out; }
   let pos = db.prepare("SELECT pos FROM cursor WHERE id=1").get()?.pos || 0;
-  for (let n = 0; n < tickers.length && budgetLeft(day) > 0; n++, pos = (pos + 1) % tickers.length) {
-    try { const q = parseQuote(await get({ function: "GLOBAL_QUOTE", symbol: tickers[pos] }, day)); if (q) out.push(q); }
-    catch (e) { if (/rate|limit|premium|call frequency/i.test(e.message)) break; console.error(e.message); }
-  }
+  for (let n = 0; n < stocks.length && budgetLeft(day) > reserve; n++, pos = (pos + 1) % stocks.length)
+    if (!(await one(stocks[pos]))) break;
   db.prepare("INSERT OR REPLACE INTO cursor VALUES (1,?)").run(pos);
   return out;
 }
