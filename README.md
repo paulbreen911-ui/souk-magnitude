@@ -1,0 +1,15 @@
+# Souk Magnitude
+
+Closed loop: **pull metrics from platform APIs → compare to targets → pick an action → push it back → measure → learn.**
+
+```
+npm start        # http://localhost:3000
+npm test
+```
+
+- `config.json` – targets, tick speed, exploration rate, connectors
+- `src/connectors/` – one file per platform (`sim` demo, generic `http`). Each exposes `metrics()`, `apply(action)`, `actions`.
+- `src/engine.js` – the loop. Learning = per-action average improvement toward targets (epsilon-greedy), saved to `data/state.json`.
+- Dashboard edits targets live and pauses the loop.
+
+Add a platform: copy `http.js`, adapt auth/endpoints, register in `engine.js`.

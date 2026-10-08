@@ -1,0 +1,47 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Souk Magnitude</title>
+<style>
+body{font:15px system-ui;margin:0;padding:16px;background:#0f172a;color:#e2e8f0;max-width:900px;margin:auto}
+.card{background:#1e293b;border-radius:10px;padding:14px;margin:12px 0}
+.ok{color:#4ade80}.bad{color:#f87171}h1,h2{margin:.2em 0}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:4px 8px;border-bottom:1px solid #334155}
+button{background:#3b82f6;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer}
+input{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:4px;width:80px}
+</style>
+<h1>Souk Magnitude</h1>
+<button id=pause></button>
+<div id=app></div>
+<script>
+let S;
+const f=n=>typeof n=="number"?n.toFixed(2):n;
+async function load(){
+  S=await (await fetch("/api/state")).json();
+  pause.textContent=S.paused?"▶ Resume":"⏸ Pause";
+  const T=S.targets;
+  let h=`<div class=card><h2>Targets</h2>`+Object.entries(T).map(([m,t])=>
+    `${m}: min <input data-m=${m} data-k=min value="${t.min??""}"> max <input data-m=${m} data-k=max value="${t.max??""}"><br>`).join("")+
+    `<button onclick=saveT()>Save targets</button></div>`;
+  for(const [n,l] of Object.entries(S.latest)){
+    h+=`<div class=card><h2>${n} <small class="${l.score==0?"ok":"bad"}">${l.score==0?"on target":"off target"}</small></h2>
+    <table>`+Object.entries(l.metrics).map(([m,v])=>{
+      const t=T[m]||{},ok=(t.max==null||v<=t.max)&&(t.min==null||v>=t.min);
+      return `<tr><td>${m}</td><td class="${ok?"ok":"bad"}">${f(v)}</td><td>${spark(n,m)}</td></tr>`}).join("")+
+    `</table>Last action: <b>${l.action}</b></div>`;
+  }
+  h+=`<div class=card><h2>What we've learned</h2><table><tr><th>Action<th>Tries<th>Avg improvement</tr>`+
+    Object.entries(S.stats).sort((a,b)=>b[1].avg-a[1].avg).map(([k,v])=>`<tr><td>${k}<td>${v.n}<td class="${v.avg>0?"ok":"bad"}">${f(v.avg)}</tr>`).join("")+`</table></div>`;
+  if(S.log.length)h+=`<div class="card bad">${S.log.slice(-5).map(e=>e.error).join("<br>")}</div>`;
+  if(!document.activeElement||document.activeElement.tagName!="INPUT")app.innerHTML=h;
+}
+function spark(n,m){
+  const v=S.history.filter(x=>x.connector==n).map(x=>x.metrics[m]).slice(-40);
+  if(v.length<2)return"";const lo=Math.min(...v),hi=Math.max(...v)||1,r=hi-lo||1;
+  return `<svg width=160 height=28><polyline fill=none stroke=#60a5fa stroke-width=2 points="${v.map((y,i)=>`${i*4},${26-(y-lo)/r*24}`).join(" ")}"/></svg>`;
+}
+async function saveT(){
+  const T={};document.querySelectorAll("input").forEach(i=>{if(i.value!==""){(T[i.dataset.m]??={})[i.dataset.k]=+i.value}});
+  await fetch("/api/targets",{method:"POST",body:JSON.stringify(T)});load();
+}
+pause.onclick=async()=>{await fetch("/api/pause",{method:"POST",body:JSON.stringify({paused:!S.paused})});load()};
+load();setInterval(load,2000);
+</script>

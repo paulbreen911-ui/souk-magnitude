@@ -1,0 +1,8 @@
+{
+  "name": "souk-magnitude",
+  "version": "0.0.1",
+  "description": "Closed-loop optimizer: pulls metrics from platform APIs, decides, pushes actions back, learns.",
+  "type": "module",
+  "scripts": { "start": "node src/server.js", "test": "node --test" },
+  "engines": { "node": ">=18" }
+}
