@@ -89,3 +89,21 @@ test("retries the 1-request-per-second reply instead of giving up", async () => 
   assert.equal(q.length, 3);
   assert.equal(av.callsToday("2026-10-11"), 3); // rejected attempts are not counted
 });
+
+test("free scheduled snapshot probes first and stops when the close isn't published yet", async () => {
+  process.env.AV_PREMIUM = "0"; process.env.AV_DAILY_LIMIT = "50";
+  const jobs = await import("./src/market/jobs.js");
+  const av = await import("./src/market/av.js");
+  const { db } = await import("./src/market/db.js");
+  let latest = "2026-10-09", calls = 0;
+  globalThis.fetch = async (url) => {
+    calls++; const sym = new URL(url).searchParams.get("symbol");
+    return { ok: true, json: async () => ({ "Global Quote": { "01. symbol": sym, "05. price": "5", "07. latest trading day": latest, "10. change percent": "1%", "06. volume": "1" } }) };
+  };
+  assert.equal(await jobs.snapshot({ day: "2026-10-12" }), 0);   // lagging: stale probe only
+  assert.equal(calls, 1);
+  latest = "2026-10-12";
+  const k = await jobs.snapshot({ day: "2026-10-12" });          // published: ETFs + a few stocks
+  assert.ok(k >= 9);
+  assert.ok(db.prepare("SELECT COUNT(*) n FROM snapshots WHERE day='2026-10-12'").get().n >= 9);
+});

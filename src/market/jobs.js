@@ -13,16 +13,24 @@ const isWeekday = (n) => !["Sat", "Sun"].includes(n.dow);
 const done = (key) => db.prepare("SELECT 1 FROM runs WHERE key=?").get(key);
 const mark = (key) => db.prepare("INSERT OR IGNORE INTO runs VALUES (?,?)").run(key, new Date().toISOString());
 
+// Returns the number of quotes stored. Free-tier quotes are end-of-day and can lag the close, so a scheduled
+// free run first probes ONE ETF: if its trading day isn't today yet, stop (costs 1 call) and try again later.
 export async function snapshot(n = nyNow(), force = false) {
-  const all = allTickers();
-  const qs = await av.quotes({ etfs: all.filter((t) => t[2]).map((t) => t[0]), stocks: all.filter((t) => !t[2]).map((t) => t[0]) },
-    n.day, process.env.AV_PREMIUM === "1" ? 0 : Object.keys(UNIVERSE).length);
+  const all = allTickers(), free = process.env.AV_PREMIUM !== "1";
+  const etfs = all.filter((t) => t[2]).map((t) => t[0]), stocks = all.filter((t) => !t[2]).map((t) => t[0]);
+  let probed = [];
+  if (free && !force) {
+    probed = await av.quotes({ etfs: [etfs[0]], stocks: [] }, n.day, 0);
+    if (!probed.length || probed[0].day !== n.day) return 0;
+  }
+  const rest = await av.quotes({ etfs: probed.length ? etfs.slice(1) : etfs, stocks }, n.day, free ? Object.keys(UNIVERSE).length : 0);
+  const qs = [...probed, ...rest];
   const ins = db.prepare("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?,?,?)");
   const ts = new Date().toISOString();
-  // Keep only quotes from today's session (skips holidays / stale data).
-  // force (manual run): keep the quote's own trading day, e.g. the last close when markets are shut.
-  for (const q of qs) if (force ? q.day : q.day === n.day) ins.run(ts, q.day, q.ticker, q.price, q.change_pct, q.volume);
-  return qs.length;
+  // Scheduled: only today's session (skips holidays/stale). Manual (force): keep the quote's own trading day.
+  let k = 0;
+  for (const q of qs) if (force ? q.day : q.day === n.day) { ins.run(ts, q.day, q.ticker, q.price, q.change_pct, q.volume); k++; }
+  return k;
 }
 
 export function buildDaily(day) {
@@ -85,7 +93,7 @@ export async function daily(n = nyNow()) {
   buildCategories(n.day);
 }
 
-// Check once a minute. Snapshots (hourly if premium, else once at 16:00 ET) on weekdays; daily rollup after 16:30 ET.
+// Check once a minute, weekdays only (see below).
 export function startScheduler() {
   const tick = async () => {
     const n = nyNow();
@@ -94,13 +102,22 @@ export function startScheduler() {
     } catch (e) { console.error("backfill", e.message); }
     if (!isWeekday(n)) return;
     try {
-      // Premium: hourly 10–16 ET. Free: one snapshot at 16:00 ET (call budget).
-      const first = process.env.AV_PREMIUM === "1" ? 10 : 16;
-      if (n.hour >= first && n.hour <= 16 && !done(`snap ${n.day} ${n.hour}`)) {
-        mark(`snap ${n.day} ${n.hour}`); console.log("snapshot", n.day, n.hour, await snapshot(n));
-      }
-      if ((n.hour > 16 || (n.hour === 16 && n.minute >= 30)) && !done(`daily ${n.day}`)) {
-        mark(`daily ${n.day}`); await daily(n); console.log("daily rollup", n.day);
+      if (process.env.AV_PREMIUM === "1") {
+        // Premium (real-time): hourly 10:00–16:00 ET, rollup after 16:30.
+        if (n.hour >= 10 && n.hour <= 16 && !done(`snap ${n.day} ${n.hour}`)) {
+          mark(`snap ${n.day} ${n.hour}`); console.log("snapshot", n.day, n.hour, await snapshot(n));
+        }
+        if ((n.hour > 16 || (n.hour === 16 && n.minute >= 30)) && !done(`daily ${n.day}`)) {
+          mark(`daily ${n.day}`); await daily(n); console.log("daily rollup", n.day);
+        }
+      } else {
+        // Free (end-of-day data): try at 17:00, 18:00, 19:00, 20:00 ET until today's close is available, then roll up.
+        if (n.hour >= 17 && n.hour <= 20 && !done(`snapok ${n.day}`) && !done(`snaptry ${n.day} ${n.hour}`)) {
+          mark(`snaptry ${n.day} ${n.hour}`);
+          const k = await snapshot(n); console.log("snapshot", n.day, n.hour, k);
+          if (k > 0) mark(`snapok ${n.day}`);
+        }
+        if (done(`snapok ${n.day}`) && !done(`daily ${n.day}`)) { mark(`daily ${n.day}`); await daily(n); console.log("daily rollup", n.day); }
       }
     } catch (e) { console.error("scheduler", e.message); }
   };
