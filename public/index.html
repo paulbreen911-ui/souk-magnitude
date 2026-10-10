@@ -351,10 +351,20 @@ async function loadEngine(){
   $("pauseB").onclick=async()=>{await fetch("/api/pause",{method:"POST",body:JSON.stringify({paused:!E.paused})});loadEngine()};
 }
 
+async function pollJob(){
+  const j=(await (await fetch("/api/market/status")).json()).job||{};
+  if(j.running){$("jobMsg").textContent=`Running ${j.name}… (can take up to 30s)`;setTimeout(pollJob,2000);return}
+  $("jobMsg").textContent=j.error?`Done, but: ${j.error}`:`Done${j.result!=null?` (${j.result} fetched)`:""}.`;
+  load();
+}
 document.querySelectorAll("[data-job]").forEach(b=>b.onclick=async()=>{
-  $("jobMsg").textContent="Running…";
-  try{const r=await fetch("/api/market/run?job="+b.dataset.job,{method:"POST"});const j=await r.json();
-    $("jobMsg").textContent=j.error?("Done, but: "+j.error):("Done"+(j.r!=null?" ("+j.r+" fetched)":"")+".");load()}catch(e){$("jobMsg").textContent="Failed: "+e.message}
+  $("jobMsg").textContent="Starting…";
+  try{
+    const r=await fetch("/api/market/run?job="+b.dataset.job,{method:"POST"}),j=await r.json();
+    if(j.error){$("jobMsg").textContent=j.error;return}
+    if(b.dataset.job==="resetcalls"){$("jobMsg").textContent="Counter reset.";load();return}
+    pollJob();
+  }catch(e){$("jobMsg").textContent="Failed: "+e.message}
 });
 /* ---------- load + render ---------- */
 async function load(){

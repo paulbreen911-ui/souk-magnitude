@@ -46,13 +46,13 @@ test("free mode: ETFs first, respects daily limit and news reserve", async () =>
   const calls = [];
   globalThis.fetch = async (url) => {
     const sym = new URL(url).searchParams.get("symbol"); calls.push(sym);
-    return { ok: true, json: async () => ({ "Global Quote": { "01. symbol": sym, "05. price": "10", "07. latest trading day": "2026-10-09", "10. change percent": "1%", "06. volume": "1" } }) };
+    return { ok: true, json: async () => ({ "Global Quote": { "01. symbol": sym, "05. price": "10", "07. latest trading day": "2030-01-01", "10. change percent": "1%", "06. volume": "1" } }) };
   };
   const etfs = ["A", "B", "C"], stocks = ["S1", "S2", "S3", "S4", "S5", "S6"];
-  const q = await av.quotes({ etfs, stocks }, "2026-10-09", 5);
+  const q = await av.quotes({ etfs, stocks }, "2030-01-01", 5);
   assert.equal(q.length, 7);              // 12 limit - 5 reserved
   assert.deepEqual(calls.slice(0, 3), etfs);
-  const q2 = await av.quotes({ etfs, stocks }, "2026-10-10", 5);  // next day resumes at cursor
+  const q2 = await av.quotes({ etfs, stocks }, "2030-01-02", 5);  // next day resumes at cursor
   assert.equal(calls[10], "S5");
 });
 

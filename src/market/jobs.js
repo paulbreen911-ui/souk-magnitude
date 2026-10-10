@@ -84,9 +84,10 @@ export async function backfill(n = nyNow()) {
 
 export async function daily(n = nyNow()) {
   buildDaily(n.day);
+  const today = nyNow().day; // API budget is counted per real day, even when rolling up an earlier trading day
   for (const [cat, u] of Object.entries(UNIVERSE)) {
-    if (av.budgetLeft(n.day) <= 0) break;
-    try { const x = await av.news([...u.tickers, u.etf], n.day);
+    if (av.budgetLeft(today) <= 0) break;
+    try { const x = await av.news([...u.tickers, u.etf], today);
       db.prepare("INSERT OR REPLACE INTO news VALUES (?,?,?,?)").run(n.day, cat, x.sentiment, x.articles);
     } catch (e) { console.error("news", cat, e.message); }
   }
